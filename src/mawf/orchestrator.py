@@ -24,7 +24,7 @@ def run(question: str, planner: Callable[[str], list[dict]] = rule_planner,
     trace = Trace()
     failures: list[str] = []
     for attempt in range(max_attempts):
-        trace.log("orchestrator", "attempt", n=attempt)
+        trace.log("orchestrator", "attempt", attempt=attempt)
         try:
             plan = parse_plan(question, planner(question))
         except (ContractError, ValueError) as e:

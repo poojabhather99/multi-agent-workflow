@@ -12,7 +12,7 @@ class Trace:
     events: list[dict[str, Any]] = field(default_factory=list)
 
     def log(self, agent: str, kind: str, **data: Any) -> None:
-        self.events.append({"n": len(self.events), "agent": agent, "kind": kind, **data})
+        self.events.append({**data, "n": len(self.events), "agent": agent, "kind": kind})
 
     def count(self, kind: str) -> int:
         return sum(e["kind"] == kind for e in self.events)
