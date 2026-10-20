@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/poojabhather99/multi-agent-workflow/actions/workflows/ci.yml/badge.svg)](https://github.com/poojabhather99/multi-agent-workflow/actions/workflows/ci.yml)
 
+**Live demo (runs in your browser):** https://poojabhather99.github.io/multi-agent-workflow/
+
 A small multi-agent pipeline built around the parts that usually break in practice: **typed contracts between agents, an auditable trace, and a critic that can reject work and trigger a retry.**
 
 Three roles:
@@ -21,7 +23,7 @@ A plan is untrusted input, whether it comes from a model or a bug. `parse_plan` 
 ```bash
 pip install -e ".[dev]"
 python -m mawf.evaluate
-pytest -q          # 30 tests
+pytest -q          # 31 tests
 ```
 
 ## Evaluation

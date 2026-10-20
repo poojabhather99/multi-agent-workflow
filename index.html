@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-agent workflow demo</title>
+<link rel="icon" href="data:,">
+<meta name="description" content="Ask a pricing question. A planner writes a validated plan, a researcher runs it with tools, and a critic checks the result and can force a retry.">
+<style>
+:root{--bg:#fafaf8;--fg:#1c1c1a;--mut:#6b6b66;--card:#fff;--line:#e3e2dc;--acc:#1f6f5c;--accfg:#fff;--bad:#a8321f;--ok:#1f6f5c;--code:#f2f1ec}
+@media (prefers-color-scheme:dark){:root{--bg:#141413;--fg:#ecebe5;--mut:#a09f98;--card:#1d1d1b;--line:#33332f;--acc:#4cb89d;--accfg:#10201b;--bad:#ef8a75;--ok:#4cb89d;--code:#242421}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:28px 16px 64px}
+h1{font-size:1.7rem;margin:0 0 6px}
+h2{font-size:1.05rem;margin:28px 0 10px}
+p.lead{color:var(--mut);margin:0 0 14px}
+a{color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin:12px 0}
+label{display:block;font-size:.85rem;color:var(--mut);margin:10px 0 4px}
+input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
+textarea{min-height:110px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.85rem}
+button{background:var(--acc);color:var(--accfg);border:0;border-radius:8px;padding:9px 14px;font:inherit;font-weight:600;cursor:pointer;margin:8px 8px 0 0}
+button.alt{background:transparent;color:var(--acc);border:1px solid var(--acc)}
+button:disabled{opacity:.5;cursor:wait}
+.row{display:flex;gap:12px;flex-wrap:wrap}.row>*{flex:1 1 180px}
+pre{background:var(--code);padding:10px 12px;border-radius:8px;overflow:auto;font-size:.82rem;white-space:pre-wrap;word-break:break-word;margin:6px 0}
+table{border-collapse:collapse;width:100%;font-size:.88rem}th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left}
+.tag{margin-left:8px;display:inline-block;padding:1px 8px;border-radius:99px;font-size:.78rem;border:1px solid var(--line)}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.mut{color:var(--mut)}
+#status{font-size:.9rem;color:var(--mut);margin:8px 0}
+.bubble{padding:8px 12px;border-radius:12px;margin:6px 0;max-width:92%;white-space:pre-wrap;border:1px solid var(--line)}
+.me{margin-left:auto;background:var(--acc);color:var(--accfg);border-color:var(--acc)}
+footer{margin-top:36px;color:var(--mut);font-size:.88rem}
+</style>
+</head>
+<body>
+<main>
+<h1>Planner, researcher, critic</h1>
+<p class="lead">Ask a pricing question. A planner writes a validated plan, a researcher runs it with tools, and a critic checks the result and can force a retry.</p>
+<p class="mut" style="font-size:.9rem">This page runs the project's actual Python source in your browser (via Pyodide). Nothing is sent to a server. <a href="https://github.com/poojabhather99/multi-agent-workflow">View the code on GitHub</a>.</p>
+<div id="status">Loading Python (first visit can take 10 to 20 seconds)...</div>
+<div id="app" hidden>
+
+<div class="card">
+<label for="qsel">Question</label><select id="qsel"></select>
+<label><input id="flaky" type="checkbox" style="width:auto"> Inject a fault: the researcher misreports its answer on the first attempt</label>
+<button id="go">Run</button><button id="bad" class="alt">Simulate a model proposing a shell command</button>
+</div>
+<div id="out"></div>
+<h2>Task suite</h2>
+<div class="card"><button id="suite" class="alt">Run all 8 tasks, with and without faults</button><div id="suiteout"></div></div>
+
+</div>
+<footer>Turn on the fault and watch the critic reject the first answer and the second attempt succeed. The critic checks consistency with the trace, so a consistently wrong plan would still pass; the README says so.</footer>
+</main>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script>
+const FILES = ["src/mawf/__init__.py", "src/mawf/contracts.py", "src/mawf/tools.py", "src/mawf/trace.py", "src/mawf/agents.py", "src/mawf/orchestrator.py", "src/mawf/evaluate.py"];
+const PACKAGES = [];
+const PY = String.raw`
+import json
+from mawf.orchestrator import run
+from mawf.agents import Researcher, llm_planner
+from mawf.evaluate import evaluate, TASKS
+def tasks():
+    return json.dumps([q for q, _ in TASKS])
+def _pack(o):
+    return json.dumps({"ok": o.ok, "answer": o.answer, "attempts": o.attempts,
+                       "failures": o.failures, "events": o.trace.events})
+def go(q, flaky):
+    return _pack(run(q, researcher=Researcher(flaky=bool(flaky))))
+def bad(q):
+    p = llm_planner(lambda _p: '[{"tool":"shell","arg":"rm -rf /","store_as":"x"}]')
+    return _pack(run(q, planner=p, max_attempts=2))
+def suite():
+    return json.dumps([evaluate(False), evaluate(True)])
+`;
+const $ = (id) => document.getElementById(id);
+const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
+let py;
+async function boot() {
+  try {
+    py = await loadPyodide();
+    if (PACKAGES.length) { $('status').textContent = 'Loading ' + PACKAGES.join(', ') + '...'; await py.loadPackage(PACKAGES); }
+    const base = new URL('.', location.href).href;
+    for (const f of FILES) {
+      const r = await fetch(base + f);
+      if (!r.ok) throw new Error('could not load ' + f + ' (' + r.status + ')');
+      py.FS.mkdirTree('/app/' + f.split('/').slice(0, -1).join('/'));
+      py.FS.writeFile('/app/' + f, await r.text());
+    }
+    py.runPython("import sys; sys.path.insert(0, '/app/src')");
+    py.runPython(PY);
+    $('status').remove(); $('app').hidden = false;
+    init();
+  } catch (e) { $('status').textContent = 'Could not start the demo: ' + e.message; $('status').className = 'bad'; }
+}
+const call = (fn, ...args) => JSON.parse(py.globals.get(fn)(...args));
+
+function show(r) {
+  const out = $('out'); out.replaceChildren();
+  const s = el('div', undefined, 'card');
+  s.append(el('strong', r.ok ? 'Answer: ' + r.answer : 'No answer produced', r.ok ? 'ok' : 'bad'), el('span', ' ' + r.attempts + ' attempt(s)', 'tag'));
+  r.failures.forEach((f) => s.append(el('p', 'Rejected: ' + f, 'bad')));
+  out.append(s, el('h2', 'Trace'));
+  const pre = el('pre');
+  pre.textContent = r.events.map((e) => { const { n, agent, kind, ...rest } = e; return String(n).padStart(2, '0') + '  ' + agent.padEnd(14) + kind.padEnd(16) + JSON.stringify(rest); }).join('\n');
+  out.append(pre);
+}
+function init() {
+  call('tasks').forEach((q) => { const o = el('option', q); o.value = q; $('qsel').append(o); });
+  $('go').onclick = () => show(call('go', $('qsel').value, $('flaky').checked));
+  $('bad').onclick = () => show(call('bad', $('qsel').value));
+  $('suite').onclick = () => {
+    const rows = call('suite'); const keys = Object.keys(rows[0]);
+    const t = el('table'); const h = el('tr'); keys.forEach((k) => h.append(el('th', k))); t.append(h);
+    rows.forEach((r) => { const tr = el('tr'); keys.forEach((k) => tr.append(el('td', String(r[k])))); t.append(tr); });
+    $('suiteout').replaceChildren(t);
+  };
+  $('go').click();
+}
+
+boot();
+</script>
+</body>
+</html>
