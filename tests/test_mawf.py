@@ -108,3 +108,9 @@ def test_evaluation_summary():
     assert clean["success"] == 1.0 and clean["total_retries"] == 0
     assert flaky["success"] == 1.0 and flaky["total_retries"] == len(TASKS)
     assert clean["wrong_answers_accepted"] == flaky["wrong_answers_accepted"] == 0
+
+
+def test_trace_index_is_sequential_across_retries():
+    o = run("Total for 4 widgets including shipping?", researcher=Researcher(flaky=True))
+    assert [e["n"] for e in o.trace.events] == list(range(len(o.trace.events)))
+    assert [e["attempt"] for e in o.trace.events if e["kind"] == "attempt"] == [0, 1]
